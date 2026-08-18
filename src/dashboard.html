@@ -727,6 +727,10 @@ function loadRealtime() {
   return get('/api/realtime?site=' + state.site).then(function (data) {
     state.realtime = data;
     $('online').textContent = fmt.count(data.online);
+    // On the first load this races `refresh()`. Whichever finishes second is
+    // the one that puts the data on screen: if the view is not built yet there
+    // is no panel to paint and `render()` will pick `state.realtime` up.
+    paintStream();
   }).catch(function () {});
 }
 
@@ -1234,7 +1238,7 @@ function streamPanel() {
       }).join('')
     : '<div class="empty">Nothing in the last half hour</div>';
 
-  return '<section class="panel"><div class="panel-head">' +
+  return '<section class="panel" id="stream"><div class="panel-head">' +
     '<span class="cap" style="display:flex;align-items:center;gap:7px">' +
     '<span class="dot" style="background:var(--live);color:var(--live);animation:em-live 1.8s ease-out infinite"></span>' +
     'stream</span>' +
@@ -1242,6 +1246,23 @@ function streamPanel() {
     esc(realtime ? fmt.count(realtime.online) : '0') + '</span></div>' +
     '<div class="chart" id="minutes" style="margin:0 -6px"></div>' +
     '<div class="feed">' + feed + '</div></section>';
+}
+
+/**
+ * Repaint the realtime panel in place.
+ *
+ * Every other panel is redrawn by `render()`, which runs when somebody clicks
+ * something. The realtime poll is not a click: it lands every thirty seconds on
+ * a dashboard nobody is touching, and a full `render()` there would blow away
+ * text selection and repaint charts that have not changed. So this panel is the
+ * one that redraws itself, and does nothing at all when the current tab has no
+ * stream on it.
+ */
+function paintStream() {
+  var host = $('stream');
+  if (!host) return;
+  host.outerHTML = streamPanel();
+  drawMinutes($('minutes'), state.realtime && state.realtime.minutes);
 }
 
 function ago(ts) {
