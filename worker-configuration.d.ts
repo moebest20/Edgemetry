@@ -7,6 +7,9 @@ interface __BaseEnv_Env {
 	FILTERS: "on";
 	PBKDF2_ITERATIONS: "15000";
 	UPDATE_CHECK: "on";
+	TRUSTED_PROXY_CIDRS?: string;
+	GEO_KV?: KVNamespace;
+
 }
 declare namespace Cloudflare {
 	interface GlobalProps {
