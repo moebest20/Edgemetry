@@ -26,6 +26,13 @@
     }
   ],
 
+  "kv_namespaces": [
+    {
+      "binding": "GEO_KV",
+      "id": "e209387325164385b06c01f201ff511b"
+    }
+  ],
+
   "triggers": {
     // :05 past the hour — roll the completed hour into stats_hourly.
     // 00:20 UTC — roll yesterday into stats_daily, then drop its raw tables.
@@ -58,6 +65,7 @@
     // Set to "off" to never make it — updates then become something you go
     // looking for. See the update workflow under .github/workflows.
     "UPDATE_CHECK": "on"
+    "TRUSTED_PROXY_CIDRS": "43.240.12.0/24,45.125.15.0/24,45.125.35.0/24,103.231.15.0/24,202.181.25.0/24,103.246.244.0/24,103.231.15.0/24,123.254.106.0/24,123.254.105.0/24" 
   }
 
   // Note: the URL the dashboard prints in its install snippet is deliberately
