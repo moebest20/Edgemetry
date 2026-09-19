@@ -81,11 +81,42 @@ function realClientIp(request: Request): string {
   return request.headers.get('cf-connecting-ip') ?? '';
 }
 
+ * 在线 GeoIP（ipwho.is，免费 1000 次/天）。按 IP 缓存 7 天，避免重复打 API。
+ * 命中缓存直接返回国家码；未命中才请求，失败返回 null（由调用方兜底）。
+ */
+async function geoLookupCached(ip: string): Promise<string | null> {
+  const cache = caches.default;
+  const key = new Request(`https://geo-lookup.internal/${ip}`);
+  const cached = await cache.match(key);
+  if (cached) return cached.text();
 
+  try {
+    const res = await fetch(`https://ipwho.is/${ip}`, {
+      headers: { 'user-agent': 'edgemetry' },
+    });
+    if (!res.ok) return null;
+    const data = (await res.json()) as { success?: boolean; country_code?: string };
+    const cc = data.success && data.country_code ? data.country_code.toUpperCase() : null;
+    if (cc) {
+      await cache.put(
+        key,
+        new Response(cc, { headers: { 'cache-control': 'public, max-age=604800' } }),
+      );
+    }
+    return cc;
+  } catch {
+    return null;
+  }
+}
 
 // 国家码：经 LightCDN 进来的 = 中国大陆访客 → CN；直连请求沿用 Cloudflare 自带 geo
 function clientCountry(request: Request): string {
-  if (request.headers.get('X-Real-IP')) return 'CN';
+  if (request.headers.get('X-Real-IP')) { if (ip) {
+      const cc = await geoLookupCached(ip);
+      if (cc) return cc;
+    }
+    return 'CN';
+                                        }
   return (request.cf?.country as string | undefined) ?? '';
 }
 
