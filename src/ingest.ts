@@ -88,7 +88,6 @@ function clientCountry(request: Request): string {
   if (request.headers.get('X-Real-IP')) 
     return 'CN';    }
   return (request.cf?.country as string | undefined) ?? '';
-}
 
 
 /**
