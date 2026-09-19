@@ -68,6 +68,25 @@ function referrerHost(referrer: string, siteDomain: string): string {
   }
 }
 
+// 真实访客 IP：优先取 LightCDN 透传的客户端 IP，直连时回退 cf-connecting-ip
+function realClientIp(request: Request): string {
+  const cdnIp = request.headers.get('X-Real-IP');
+  if (cdnIp && cdnIp.trim()) return cdnIp.trim();
+  const xff = request.headers.get('x-forwarded-for');
+  if (xff) {
+    const first = xff.split(',')[0].trim();
+    if (first) return first;
+  }
+  return request.headers.get('cf-connecting-ip') ?? '';
+}
+
+// 国家码：经 LightCDN 进来的 = 中国大陆访客 → CN；直连请求沿用 Cloudflare 自带 geo
+function clientCountry(request: Request): string {
+  if (request.headers.get('x-cdn-client-ip')) return 'CN';
+  return (request.cf?.country as string | undefined) ?? '';
+}
+
+
 /**
  * Screen width, kept as one of four buckets.
  *
@@ -184,14 +203,14 @@ export async function handleIngest(request: Request, env: Env): Promise<Response
 
   const now = Math.floor(Date.now() / 1000);
   const parts = partsForTs(now);
-  const ip = request.headers.get('cf-connecting-ip') ?? '';
+  const ip = realClientIp(request);
   const visitor = await computeVisitor(env.DB, parts, site.id, ip, userAgent);
 
   const { browser, os, device } = parseUa(userAgent);
   const name = typeof payload.n === 'string' && payload.n !== '' ? clamp(payload.n, 64) : 'pageview';
   const referrer = typeof payload.r === 'string' ? payload.r : '';
   const params = target.searchParams;
-  const country = (request.cf?.country as string | undefined) ?? '';
+  const country = clientCountry(request);
 
   await insertEvent(env.DB, rawTable(parts.suffix), [
     site.id,
