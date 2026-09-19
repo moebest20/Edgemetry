@@ -9,9 +9,6 @@ import { partsForTs } from './time';
 import { isBot, parseUa } from './ua';
 import { computeVisitor } from './visitor';
 
-import maxmindInit, { Maxmind } from 'maxminddb-wasm/browser';
-import wasmModule from 'maxminddb-wasm/browser/index_bg.wasm';
-import geoCountryDb from './GeoLite2-Country.mmdb';
 
 /** Beacon bodies are tiny; anything larger is not one of ours. */
 const MAX_BODY_BYTES = 4096;
@@ -84,38 +81,7 @@ function realClientIp(request: Request): string {
   return request.headers.get('cf-connecting-ip') ?? '';
 }
 
-// 模块级单例：wasm 初始化 + 解析 mmdb 只在每个 isolate 冷启动做一次
-let countryReader: Maxmind | null = null;
-let countryReaderReady: Promise<Maxmind | null> | null = null;
 
-function loadCountryReader(): Promise<Maxmind | null> {
-  if (countryReader) return Promise.resolve(countryReader);
-  if (!countryReaderReady) {
-    countryReaderReady = (async () => {
-      try {
-        await maxmindInit({ module_or_path: wasmModule });
-        countryReader = new Maxmind(new Uint8Array(geoCountryDb));
-        return countryReader;
-      } catch {
-        return null; // GeoIP 不可用 → 走兜底
-      }
-    })();
-  }
-  return countryReaderReady;
-}
-
-// 国家码：一律对真实 IP 做 GeoIP；库缺失时回退到原有逻辑
-async function clientCountry(request: Request, ip: string): Promise<string> {
-  const reader = await loadCountryReader();
-  if (reader && ip) {
-    try {
-      const res = reader.lookup_country(ip);
-      const iso = res?.country?.iso_code;
-      if (iso) return iso;
-    } catch {
-      // 保留/私有 IP 或查不到 → 继续兜底
-    }
-  }
 
 // 国家码：经 LightCDN 进来的 = 中国大陆访客 → CN；直连请求沿用 Cloudflare 自带 geo
 function clientCountry(request: Request): string {
