@@ -9,10 +9,6 @@ import { partsForTs } from './time';
 import { isBot, parseUa } from './ua';
 import { computeVisitor } from './visitor';
 
-import maxmindInit, { Maxmind } from 'maxminddb-wasm/browser';
-import wasmModule from 'maxminddb-wasm/browser/index_bg.wasm';
-import geoCountryDb from './GeoLite2-Country.mmdb';
-
 /** Beacon bodies are tiny; anything larger is not one of ours. */
 const MAX_BODY_BYTES = 4096;
 const MAX_PATH_LENGTH = 512;
@@ -32,6 +28,30 @@ const CORS_HEADERS = {
   'access-control-allow-headers': 'content-type',
   'access-control-max-age': '86400',
 } as const;
+
+/**
+ * 真实访客 IP:优先取 LightCDN 透传的客户端 IP,直连时回退 cf-connecting-ip。
+ * LightCDN 需在控制台配置回源请求头 X-Real-IP = 客户端 IP。
+ */
+function realClientIp(request: Request): string {
+  const cdnIp = request.headers.get('X-Real-IP');
+  if (cdnIp && cdnIp.trim()) return cdnIp.trim();
+  const xff = request.headers.get('x-forwarded-for');
+  if (xff) {
+    const first = xff.split(',')[0].trim();
+    if (first) return first;
+  }
+  return request.headers.get('cf-connecting-ip') ?? '';
+}
+
+/**
+ * 国家码:经 LightCDN 进来的 = 中国大陆访客 → CN;直连请求沿用 Cloudflare 自带 geo。
+ * (LightCDN 大陆线路固定走美国回源节点,cf.country 对这部分请求恒为 US,不可用。)
+ */
+function clientCountry(request: Request): string {
+  if (request.headers.get('X-Real-IP')) return 'CN';
+  return (request.cf?.country as string | undefined) ?? '';
+}
 
 function beaconResponse(status: number, message?: string): Response {
   return new Response(message ?? null, {
@@ -71,27 +91,6 @@ function referrerHost(referrer: string, siteDomain: string): string {
     return '';
   }
 }
-
-// 真实访客 IP：优先取 LightCDN 透传的客户端 IP，直连时回退 cf-connecting-ip
-function realClientIp(request: Request): string {
-  const cdnIp = request.headers.get('X-Real-IP');
-  if (cdnIp && cdnIp.trim()) return cdnIp.trim();
-  const xff = request.headers.get('x-forwarded-for');
-  if (xff) {
-    const first = xff.split(',')[0].trim();
-    if (first) return first;
-  }
-  return request.headers.get('cf-connecting-ip') ?? '';
-}
-
-
-
-// 国家码：经 LightCDN 进来的 = 中国大陆访客 → CN；直连请求沿用 Cloudflare 自带 geo
-function clientCountry(request: Request): string {
-  if (request.headers.get('X-Real-IP')) return 'CN';
-  return (request.cf?.country as string | undefined) ?? '';
-}
-
 
 /**
  * Screen width, kept as one of four buckets.
@@ -209,6 +208,8 @@ export async function handleIngest(request: Request, env: Env): Promise<Response
 
   const now = Math.floor(Date.now() / 1000);
   const parts = partsForTs(now);
+  // 访客 IP:直连用 cf-connecting-ip;经 LightCDN 用其透传的真实客户端 IP
+  // (否则哈希里是 LightCDN 节点 IP,同 UA 的多个访客会被算成同一个人)。
   const ip = realClientIp(request);
   const visitor = await computeVisitor(env.DB, parts, site.id, ip, userAgent);
 
@@ -216,7 +217,7 @@ export async function handleIngest(request: Request, env: Env): Promise<Response
   const name = typeof payload.n === 'string' && payload.n !== '' ? clamp(payload.n, 64) : 'pageview';
   const referrer = typeof payload.r === 'string' ? payload.r : '';
   const params = target.searchParams;
-  const country = await clientCountry(request, ip);
+  const country = clientCountry(request);
 
   await insertEvent(env.DB, rawTable(parts.suffix), [
     site.id,
