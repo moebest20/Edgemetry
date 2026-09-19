@@ -18,8 +18,7 @@
     "build:fonts": "node scripts/build-fonts.mjs"
   },
   "dependencies": {
-    "hono": "^4",
-    "maxminddb-wasm": "^2.2.0"
+    "hono": "^4"
   },
   "devDependencies": {
     "@cloudflare/vitest-pool-workers": "^0.18.8",
