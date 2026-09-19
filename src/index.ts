@@ -804,6 +804,12 @@ app.post('/:name{[A-Za-z0-9._-]+}', (c) => {
   return handleIngest(c.req.raw, c.env);
 });
 
+app.notFound((c) => {
+  const url = (c.env as Record<string, string | undefined>).NOT_FOUND_URL
+    ?? 'https://www.iololi.com/404';   // ← 换成你的新 404 页面 URL
+  return c.redirect(url, 302);
+});
+
 export default {
   fetch: app.fetch,
 
