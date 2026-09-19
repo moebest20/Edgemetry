@@ -5,7 +5,6 @@
  */
 
 import { RAW_COLUMNS, alterRawTable, createRawTableSql, rawTable } from './db';
-import { getCountry, getRealIp } from './geo';
 import { partsForTs } from './time';
 import { isBot, parseUa } from './ua';
 import { computeVisitor } from './visitor';
@@ -185,19 +184,14 @@ export async function handleIngest(request: Request, env: Env): Promise<Response
 
   const now = Math.floor(Date.now() / 1000);
   const parts = partsForTs(now);
-  // When the Worker sits behind a CDN (lightcdn), cf-connecting-ip is the
-  // CDN's edge IP, not the visitor's. Read the real IP from the headers the
-  // CDN injects so the visitor hash is per-visitor, not per-CDN-node.
-  const ip = getRealIp(request);
+  const ip = request.headers.get('cf-connecting-ip') ?? '';
   const visitor = await computeVisitor(env.DB, parts, site.id, ip, userAgent);
 
   const { browser, os, device } = parseUa(userAgent);
   const name = typeof payload.n === 'string' && payload.n !== '' ? clamp(payload.n, 64) : 'pageview';
   const referrer = typeof payload.r === 'string' ? payload.r : '';
   const params = target.searchParams;
-  // request.cf?.country is the CDN node's country when behind a CDN. Resolve
-  // the real country from the visitor's IP via a cached GeoIP lookup instead.
-  const country = await getCountry(request, ip);
+  const country = (request.cf?.country as string | undefined) ?? '';
 
   await insertEvent(env.DB, rawTable(parts.suffix), [
     site.id,
