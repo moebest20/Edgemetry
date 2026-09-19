@@ -1,99 +1,149 @@
-// src/geo.ts
-// ip2region v2.0 (xdb) IPv4 离线地理查询，数据放在 Cloudflare KV。
-// 整个 xdb（约 11 MiB）在每个 isolate 冷启动时整体读入并缓存在模块级变量，
-// 之后每次查询都是纯内存 CPU，无额外网络延迟。
+/**
+ * GeoIP resolution for requests arriving through a CDN (lightcdn, etc.).
+ *
+ * When the Worker sits behind a CDN, `cf-connecting-ip` and `request.cf?.country`
+ * describe the CDN's edge node, not the visitor. For edgemetry that means:
+ *   - every visitor is counted as coming from the CDN's country (e.g. US), and
+ *   - every visitor shares the CDN's IP, so the visitor hash collapses and UV
+ *     is undercounted to ~1.
+ *
+ * This module reads the real client IP from the headers the CDN injects
+ * (X-Real-IP / X-Forwarded-For) and resolves the country from that IP via a
+ * cached GeoIP lookup. The raw IP is used only in memory to derive the country
+ * and the visitor hash — it is never persisted, matching edgemetry's GDPR shape.
+ */
 
-const HEADER_LEN = 256;
-const VECTOR_INDEX_SIZE = 8; // 4 起始指针 + 4 结束指针
-const VECTOR_INDEX_ROWS = 256;
-const SEG_INDEX_SIZE = 14; // IPv4 段索引: start(4) + end(4) + len(2) + ptr(4)
+/**
+ * Headers that may carry the real client IP, in priority order.
+ *
+ * `X-Real-IP` is set by the CDN to the connection it received — it overwrites
+ * anything the client sent, so it is trusted first. `True-Client-IP` is the
+ * Cloudflare Access / Akamai equivalent. `cf-connecting-ip` is the direct
+ * connection (no CDN in front) and is checked last so a spoofed X-Real-IP from
+ * a direct request cannot override it — if X-Real-IP is present at all, we
+ * assume the request came through the CDN.
+ */
+const REAL_IP_HEADERS = [
+  'x-real-ip',
+  'true-client-ip',
+];
 
-let dbCache: Uint8Array | null = null;
-
-function ipToUint32(ip: string): number | null {
-  const m = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(ip);
-  if (!m) return null;
-  const b = [Number(m[1]), Number(m[2]), Number(m[3]), Number(m[4])];
-  if (b.some((x) => x > 255)) return null;
-  return (b[0] * 16777216 + b[1] * 65536 + b[2] * 256 + b[3]) >>> 0;
-}
-
-function u32(buf: Uint8Array, off: number): number {
-  return (buf[off] * 16777216 + buf[off + 1] * 65536 + buf[off + 2] * 256 + buf[off + 3]) >>> 0;
-}
-function u16(buf: Uint8Array, off: number): number {
-  return buf[off] * 256 + buf[off + 1];
-}
-
-export interface GeoResult {
-  country: string; // ip2region 原始国家名，如 "中国"
-  region: string; // 省份
-  city: string; // 城市
-  isp: string;
-  raw: string;
-}
-
-export async function loadDb(kv: KVNamespace): Promise<Uint8Array> {
-  if (dbCache) return dbCache;
-  const buf = await kv.get("ip2region.xdb", { type: "arrayBuffer" });
-  if (!buf) throw new Error("ip2region.xdb 未上传到 GEO_KV");
-  dbCache = new Uint8Array(buf);
-  return dbCache;
-}
-
-export async function lookupIp(kv: KVNamespace, ip: string): Promise<GeoResult | null> {
-  const ipInt = ipToUint32(ip);
-  if (ipInt === null) return null; // IPv6 / 非法 -> 由调用方回退
-  const db = await loadDb(kv);
-
-  const il0 = (ipInt >>> 24) & 255;
-  const il1 = (ipInt >>> 16) & 255;
-  const idx = (il0 * VECTOR_INDEX_ROWS + il1) * VECTOR_INDEX_SIZE;
-  const sPtr = u32(db, HEADER_LEN + idx);
-  const ePtr = u32(db, HEADER_LEN + idx + 4);
-  if (sPtr === 0 || ePtr === 0) return null;
-
-  let l = 0;
-  let h = Math.floor((ePtr - sPtr) / SEG_INDEX_SIZE);
-  let dataLen = 0;
-  let dataPtr = 0;
-  while (l <= h) {
-    const m = (l + h) >> 1;
-    const p = sPtr + m * SEG_INDEX_SIZE;
-    const segStart = u32(db, p);
-    const segEnd = u32(db, p + 4);
-    if (ipInt < segStart) h = m - 1;
-    else if (ipInt > segEnd) l = m + 1;
-    else {
-      dataLen = u16(db, p + 8);
-      dataPtr = u32(db, p + 10);
-      break;
+/**
+ * Extract the visitor's real IP.
+ *
+ * `X-Forwarded-For` is checked last because it is a chain and the leftmost
+ * entry is the most easily spoofed — a client can prepend `1.2.3.4, ` to it
+ * and a CDN that appends rather than overwrites will leave the fake in front.
+ * `X-Real-IP` is set by the CDN to the connection it received, so it is
+ * trusted first.
+ */
+export function getRealIp(request: Request): string {
+  for (const header of REAL_IP_HEADERS) {
+    const value = request.headers.get(header);
+    if (value) {
+      const ip = value.trim();
+      if (isValidIp(ip)) return ip;
     }
   }
-  if (dataLen === 0) return null;
-  const region = new TextDecoder().decode(db.subarray(dataPtr, dataPtr + dataLen));
-  const parts = region.split("|");
-  return {
-    country: parts[0] ?? "",
-    region: parts[2] ?? "",
-    city: parts[3] ?? "",
-    isp: parts[4] ?? "",
-    raw: region,
-  };
+
+  // X-Forwarded-For: "client, proxy1, proxy2" — take the first entry.
+  const xff = request.headers.get('x-forwarded-for');
+  if (xff) {
+    const first = xff.split(',')[0]?.trim();
+    if (first && isValidIp(first)) return first;
+  }
+
+  // Direct connection (no CDN in front of the Worker).
+  const cf = request.headers.get('cf-connecting-ip');
+  if (cf) return cf;
+
+  return '';
 }
 
-// ip2region 国家名 -> ISO 3166-1 alpha-2（与 Cloudflare cf.country 对齐）
-export function cnCountryToCode(name: string): string {
-  switch (name) {
-    case "中国":
-      return "CN";
-    case "香港":
-      return "HK";
-    case "台湾":
-      return "TW";
-    case "澳门":
-      return "MO";
-    default:
-      return "";
+const IPV4 = /^(\d{1,3}\.){3}\d{1,3}$/;
+const IPV6 = /^[0-9a-f:]+$/i;
+
+function isValidIp(ip: string): boolean {
+  if (!ip) return false;
+  if (IPV4.test(ip)) {
+    return ip.split('.').every((octet) => {
+      const n = Number(octet);
+      return n >= 0 && n <= 255;
+    });
   }
+  return IPV6.test(ip);
+}
+
+/** Loopback / private / link-local ranges have no country. */
+function isPrivateIp(ip: string): boolean {
+  return (
+    ip === '127.0.0.1' ||
+    ip === '::1' ||
+    ip.startsWith('10.') ||
+    ip.startsWith('192.168.') ||
+    /^172\.(1[6-9]|2\d|3[01])\./.test(ip) ||
+    ip.startsWith('169.254.') ||
+    ip.startsWith('fc') ||
+    ip.startsWith('fd') ||
+    ip === '::'
+  );
+}
+
+/**
+ * Bounded per-isolate cache. The edge cache (via `cf: { cacheTtl }`) already
+ * deduplicates across requests, but this saves a subrequest round-trip when
+ * the same IP hits the same isolate twice in quick succession — common for a
+ * visitor loading multiple pages.
+ */
+const countryCache = new Map<string, string>();
+const COUNTRY_CACHE_MAX = 2000;
+
+/**
+ * Resolve a country code (ISO 3166-1 alpha-2) from an IP.
+ *
+ * Uses ipwho.is (free, HTTPS, no API key, no documented rate limit) with
+ * Cloudflare edge caching (`cacheTtl: 86400`) so each unique IP is queried at
+ * most once per day per colo. Falls back to `request.cf?.country` — which
+ * behind a CDN is the CDN node's country — only if the lookup fails or times
+ * out. An empty string is returned for private/loopback IPs.
+ *
+ * The lookup has a 2-second timeout. If it elapses, the request proceeds with
+ * the fallback country rather than blocking the beacon response.
+ */
+export async function getCountry(request: Request, ip: string): Promise<string> {
+  if (!ip || isPrivateIp(ip)) {
+    return (request.cf?.country as string | undefined) ?? '';
+  }
+
+  const cached = countryCache.get(ip);
+  if (cached !== undefined) return cached;
+
+  let country = '';
+  try {
+    const resp = await fetch(`https://ipwho.is/${encodeURIComponent(ip)}`, {
+      cf: { cacheTtl: 86400, cacheEverything: true },
+      signal: AbortSignal.timeout(2000),
+    });
+    if (resp.ok) {
+      const data = (await resp.json()) as {
+        success?: boolean;
+        country_code?: string;
+      };
+      if (data.success && data.country_code) {
+        country = data.country_code.toUpperCase();
+      }
+    }
+  } catch {
+    // Timeout, DNS failure, or bad JSON — fall through to the CDN-derived
+    // country. Better a US label than a dropped beacon.
+  }
+
+  if (!country) {
+    country = (request.cf?.country as string | undefined) ?? '';
+  }
+
+  if (countryCache.size > COUNTRY_CACHE_MAX) countryCache.clear();
+  countryCache.set(ip, country);
+
+  return country;
 }
