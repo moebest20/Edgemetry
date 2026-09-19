@@ -19,6 +19,7 @@
   },
   "dependencies": {
     "hono": "^4"
+    "maxminddb-wasm": "^2.2.0"
   },
   "devDependencies": {
     "@cloudflare/vitest-pool-workers": "^0.18.8",
