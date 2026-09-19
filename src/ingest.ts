@@ -184,14 +184,14 @@ export async function handleIngest(request: Request, env: Env): Promise<Response
 
   const now = Math.floor(Date.now() / 1000);
   const parts = partsForTs(now);
-  const ip = request.headers.get('cf-connecting-ip') ?? '';
+  const ip = request.headers.get('safeClientIp(request)') ?? '';
   const visitor = await computeVisitor(env.DB, parts, site.id, ip, userAgent);
 
   const { browser, os, device } = parseUa(userAgent);
   const name = typeof payload.n === 'string' && payload.n !== '' ? clamp(payload.n, 64) : 'pageview';
   const referrer = typeof payload.r === 'string' ? payload.r : '';
   const params = target.searchParams;
-  const country = (request.cf?.country as string | undefined) ?? '';
+  const country = (safeCountry(request) as string | undefined) ?? '';
 
   await insertEvent(env.DB, rawTable(parts.suffix), [
     site.id,
