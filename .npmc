@@ -1,0 +1,2 @@
+# 跳过所有安装生命周期脚本，规避 maxminddb-wasm 的 postinstall(tsx not found)
+ignore-scripts=true
