@@ -82,39 +82,11 @@ function realClientIp(request: Request): string {
 }
 
 
-async function geoLookupCached(ip: string): Promise<string | null> {
-  const cache = caches.default;
-  const key = new Request(`https://geo-lookup.internal/${ip}`);
-  const cached = await cache.match(key);
-  if (cached) return cached.text();
-
-  try {
-    const res = await fetch(`https://ipwho.is/${ip}`, {
-      headers: { 'user-agent': 'edgemetry' },
-    });
-    if (!res.ok) return null;
-    const data = (await res.json()) as { success?: boolean; country_code?: string };
-    const cc = data.success && data.country_code ? data.country_code.toUpperCase() : null;
-    if (cc) {
-      await cache.put(
-        key,
-        new Response(cc, { headers: { 'cache-control': 'public, max-age=604800' } }),
-      );
-    }
-    return cc;
-  } catch {
-    return null;
-  }
-}
 
 // 国家码：经 LightCDN 进来的 = 中国大陆访客 → CN；直连请求沿用 Cloudflare 自带 geo
-async function clientCountry(request: Request): string {
-  if (request.headers.get('X-Real-IP')) { if (ip) {
-      const cc = await geoLookupCached(ip);
-      if (cc) return cc;
-    }
-    return 'CN';
-                                        }
+function clientCountry(request: Request): string {
+  if (request.headers.get('X-Real-IP')) 
+    return 'CN';    }
   return (request.cf?.country as string | undefined) ?? '';
 }
 
