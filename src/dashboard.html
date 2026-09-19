@@ -1195,7 +1195,7 @@ function eventsPanel() {
 function geoPanel(compact) {
   var list = (state.breakdowns.country || []).slice(0, compact ? 8 : 24);
   return '<section class="panel"><div class="panel-head"><span class="cap">geography</span>' +
-    '<span class="note">from cf-ipcountry · no ip stored</span></div>' +
+    '<span class="note">from geoip lookup · no ip stored</span></div>' +
     '<div class="chart" id="geo"></div>' +
     (list.length
       ? '<div class="geo-list">' + list.map(function (row) {
