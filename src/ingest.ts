@@ -184,61 +184,14 @@ export async function handleIngest(request: Request, env: Env): Promise<Response
 
   const now = Math.floor(Date.now() / 1000);
   const parts = partsForTs(now);
-  // ========== 1. 从 CDN 转发头取真实 IP（带防伪校验） ==========
-// 把这里填成 LightCDN 的节点 IP/段（官方有节点 IP 公告；也可用下方 /debug 先观察）
-const LIGHTCDN_NODES = new Set(['38.60.163.124','38.60.162.238','130.94.15.32','38.60.162.76','130.94.15.32']); // 示例，务必替换
-
-function realClientIP(request: Request): string {
-  const peer = request.headers.get('cf-connecting-ip') ?? '';
-  // 只有直连 IP 是 LightCDN 节点时才信任转发头，防止访客伪造 XFF
-  if (!LIGHTCDN_NODES.has(peer)) return peer;
-  const real = request.headers.get('x-real-ip');
-  if (real && real.trim()) return real.trim();
-  // 回退 XFF：Cloudflare 会把节点 IP 追加到末尾，取最后一个非节点 IP
-  const xff = request.headers.get('x-forwarded-for');
-  if (xff) {
-    const parts = xff.split(',').map((s) => s.trim()).filter(Boolean);
-    for (let i = parts.length - 1; i >= 0; i--) {
-      if (parts[i] !== peer) return parts[i];
-    }
-  }
-  return peer;
-}
-
-// ========== 2. 对真实 IP 查国家（复用现成 settings 表做缓存，免加 KV） ==========
-async function lookupCountry(ip: string, db: D1Database): Promise<string> {
-  if (!ip) return '';
-  const key = `geo:${ip}`;
-  try {
-    const row = await db.prepare('SELECT value FROM settings WHERE key = ?')
-      .bind(key).first<{ value: string }>();
-    if (row) return row.value;
-  } catch {}
-  try {
-    const resp = await fetch(`http://ip-api.com/json/${ip}?fields=status,countryCode`);
-    const data = await resp.json() as { status?: string; countryCode?: string };
-    const country = data.status === 'success' ? (data.countryCode ?? '') : '';
-    if (country) {
-      try {
-        await db.prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)')
-          .bind(key, country).run();
-      } catch {}
-    }
-    return country;
-  } catch {
-    return '';
-  }
-}
-
-// ========== 3. 在 handleIngest 里替换两处 ==========
-  const ip = realClientIP(request);
+  const ip = request.headers.get('cf-connecting-ip') ?? '';
   const visitor = await computeVisitor(env.DB, parts, site.id, ip, userAgent);
 
   const { browser, os, device } = parseUa(userAgent);
   const name = typeof payload.n === 'string' && payload.n !== '' ? clamp(payload.n, 64) : 'pageview';
   const referrer = typeof payload.r === 'string' ? payload.r : '';
   const params = target.searchParams;
-  const country = await lookupCountry(ip, env.DB);
+  const country = (request.cf?.country as string | undefined) ?? '';
 
   await insertEvent(env.DB, rawTable(parts.suffix), [
     site.id,
