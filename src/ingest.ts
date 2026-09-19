@@ -108,9 +108,9 @@ async function geoLookupCached(ip: string): Promise<string | null> {
 }
 
 // 国家码：经 LightCDN 进来的 = 中国大陆访客 → CN；直连请求沿用 Cloudflare 自带 geo
-function clientCountry(request: Request): string {
+async function clientCountry(request: Request): string {
   if (request.headers.get('X-Real-IP')) { if (ip) {
-      const cc = await async geoLookupCached(ip);
+      const cc = await geoLookupCached(ip);
       if (cc) return cc;
     }
     return 'CN';
