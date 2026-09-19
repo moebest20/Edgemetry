@@ -81,9 +81,7 @@ function realClientIp(request: Request): string {
   return request.headers.get('cf-connecting-ip') ?? '';
 }
 
- * 在线 GeoIP（ipwho.is，免费 1000 次/天）。按 IP 缓存 7 天，避免重复打 API。
- * 命中缓存直接返回国家码；未命中才请求，失败返回 null（由调用方兜底）。
- */
+
 async function geoLookupCached(ip: string): Promise<string | null> {
   const cache = caches.default;
   const key = new Request(`https://geo-lookup.internal/${ip}`);
