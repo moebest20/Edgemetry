@@ -82,7 +82,7 @@ function realClientIp(request: Request): string {
 
 // 国家码：经 LightCDN 进来的 = 中国大陆访客 → CN；直连请求沿用 Cloudflare 自带 geo
 function clientCountry(request: Request): string {
-  if (request.headers.get('x-cdn-client-ip')) return 'CN';
+  if (request.headers.get('X-Real-IP')) return 'CN';
   return (request.cf?.country as string | undefined) ?? '';
 }
 
