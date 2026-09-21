@@ -84,16 +84,16 @@ function realClientIp(request: Request): string {
   return request.headers.get('cf-connecting-ip') ?? '';
 }
 
-const CN_VIA_US_COLOS = new Set(['LAX', 'SJC','nrt']);  // 国内被强制调度到的海外节点
+const CN_VIA_JP_COLOS = new Set(['NRT']);  // 国内被强制调度到的海外节点
 
 function clientCountry(request: Request): string {
   const realIp = request.headers.get('X-Real-IP');
   if (realIp) {                       // 经 LightCDN
     const cc = request.cf?.country;
-    if (cc && cc !== 'US') return cc; // 非美节点 = 真实访客国（日/韩/欧准确）
+    if (cc && cc !== 'JP') return cc; // 非美节点 = 真实访客国（日/韩/欧准确）
     const colo = request.cf?.colo;
-    if (colo && CN_VIA_US_COLOS.has(colo)) return 'CN'; // 美西节点 = 国内走美西线路
-    return 'US';                      // 其余美西 = 真实美国访客
+    if (colo && CN_VIA_JP_COLOS.has(colo)) return 'CN'; // 美西节点 = 国内走美西线路
+    return 'JP';                      // 其余美西 = 真实美国访客
   }
   return (request.cf?.country as string | undefined) ?? ''; // 直连：基于真实 IP，准确
 }
