@@ -87,7 +87,8 @@ function clientCountry(request: Request): string {
   const realIp = request.headers.get('X-Real-IP');
   if (realIp) {                       // 经 LightCDN
     const cc = request.cf?.country;
-    if (cc && cc !== 'JP' or 'SG') return cc; // 非亚太节点 = 真实访客国（欧、美等准确）
+    if (cc && cc !== 'JP') return cc; 
+    if (cc && cc !== 'SG') return cc;// 非亚太节点 = 真实访客国（欧、美等准确）
     const colo = request.cf?.colo;
     if (colo && CN_VIA_JP_COLOS.has(colo)) return 'CN';
     if (colo && CN_VIA_SG_COLOS.has(colo)) return 'CN';// 亚太节点 = 国内走亚太线路
