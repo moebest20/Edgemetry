@@ -9,10 +9,6 @@ import { partsForTs } from './time';
 import { isBot, parseUa } from './ua';
 import { computeVisitor } from './visitor';
 
-import maxmindInit, { Maxmind } from 'maxminddb-wasm/browser';
-import wasmModule from 'maxminddb-wasm/browser/index_bg.wasm';
-import geoCountryDb from './GeoLite2-Country.mmdb';
-
 /** Beacon bodies are tiny; anything larger is not one of ours. */
 const MAX_BODY_BYTES = 4096;
 const MAX_PATH_LENGTH = 512;
@@ -84,16 +80,16 @@ function realClientIp(request: Request): string {
   return request.headers.get('cf-connecting-ip') ?? '';
 }
 
-const CN_VIA_JP_COLOS = new Set(['NRT');  // 国内被强制调度到的海外节点
+const CN_VIA_AP_COLOS = new Set(['NRT'],['SIN']);  // 国内被强制调度到的海外节点
 
 function clientCountry(request: Request): string {
   const realIp = request.headers.get('X-Real-IP');
   if (realIp) {                       // 经 LightCDN
     const cc = request.cf?.country;
-    if (cc && cc !== 'JP') return cc; // 非亚太节点 = 真实访客国（欧、美等准确）
+    if (cc && cc !== 'AP') return cc; // 非亚太节点 = 真实访客国（欧、美等准确）
     const colo = request.cf?.colo;
-    if (colo && CN_VIA_JP_COLOS.has(colo)) return 'CN'; // 亚太节点 = 国内走亚太线路
-    return JP;                      // 其余亚太 = 真实亚太访客
+    if (colo && CN_VIA_AP_COLOS.has(colo)) return 'CN'; // 亚太节点 = 国内走亚太线路
+    return AP;                      // 其余亚太 = 真实亚太访客
   }
   return (request.cf?.country as string | undefined) ?? ''; // 直连：基于真实 IP，准确
 }
