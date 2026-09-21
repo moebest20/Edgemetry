@@ -84,7 +84,7 @@ function realClientIp(request: Request): string {
   return request.headers.get('cf-connecting-ip') ?? '';
 }
 
-const CN_VIA_US_COLOS = new Set(['LAX', 'SJC']);  // 国内被强制调度到的海外节点
+const CN_VIA_US_COLOS = new Set(['LAX', 'SJC','nrt']);  // 国内被强制调度到的海外节点
 
 function clientCountry(request: Request): string {
   const realIp = request.headers.get('X-Real-IP');
