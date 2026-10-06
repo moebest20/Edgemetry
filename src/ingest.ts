@@ -80,15 +80,48 @@ function realClientIp(request: Request): string {
   return request.headers.get('cf-connecting-ip') ?? '';
 }
 
-const CN_VIA_JP_COLOS = new Set(['NRT','SIN']);
+// 经 LightCDN 时，真实访客 IP 由 X-Real-IP 透传，连接来自 LightCDN 的“非 anycast”
+// 边缘节点（即 Cloudflare 的亚太节点）。这些连接背后的访客均来自中国大陆，
+// 故命中任一亚太 colo 即标记为 CN。
+const APAC_COLOS = new Set([
+  // 日本
+  'NRT', 'HND', 'KIX', 'ITM', 'FUK', 'NGO', 'CTS',
+  // 新加坡
+  'SIN',
+  // 中国香港
+  'HKG',
+  // 韩国
+  'ICN', 'PUS', 'GMP',
+  // 中国台湾
+  'TPE', 'KHH', 'TNA',
+  // 泰国
+  'BKK',
+  // 马来西亚
+  'KUL',
+  // 菲律宾
+  'MNL',
+  // 印度尼西亚
+  'CGK', 'SUB', 'DPS',
+  // 越南
+  'SGN', 'HAN',
+  // 其他东南亚
+  'RGN', 'PNH', 'VTE', 'BWN',
+  // 南亚
+  'BOM', 'DEL', 'MAA', 'BLR', 'CCU', 'HYD', 'CMB', 'KTM', 'DAC', 'KHI', 'ISB', 'LHE', 'MLE',
+  // 中亚
+  'ALA', 'TSE', 'TAS', 'FRU', 'ULN',
+  // 大洋洲
+  'SYD', 'MEL', 'BNE', 'PER', 'ADL', 'AKL', 'WLG', 'CHC',
+]);
 
 function clientCountry(request: Request): string {
   const realIp = request.headers.get('X-Real-IP');
-  if (realIp) {                       // 经 LightCDN
-    const cc = request.cf?.country;
-    if (cc && cc !== 'JP') return cc; 
+  if (realIp) {                       // 经 LightCDN（非 anycast，连接来自亚太节点）
     const colo = request.cf?.colo;
-    if (colo && CN_VIA_JP_COLOS.has(colo)) return 'CN';
+    if (colo && APAC_COLOS.has(colo)) return 'CN';
+    // 极少数的非亚太 colo 才回退到 Cloudflare 国家字段
+    const cc = request.cf?.country;
+    if (cc) return cc;
   }
   return (request.cf?.country as string | undefined) ?? ''; // 直连：基于真实 IP，准确
 }
