@@ -143,7 +143,7 @@ const FACTS = `<div class="facts">
     <div><span style="font-family:var(--sans);color:var(--body)">Runtime</span><span>Cloudflare Worker</span></div>
     <div><span style="font-family:var(--sans);color:var(--body)">Database</span><span>D1</span></div>
     <div><span style="font-family:var(--sans);color:var(--body)">Cookies set</span><span>0</span></div>
-    <div><span style="font-family:var(--sans);color:var(--body)">Third parties</span><span>none</span></div>
+    <div><span style="font-family:var(--sans);color:var(--body)">Third parties</span><span>privcaptcha</span></div>
   </div>`;
 
 export function setupPage(error?: string): string {
