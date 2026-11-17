@@ -178,7 +178,8 @@ function parseSiteIds(value: unknown): number[] {
  * from other people's sites, where a content policy for this origin means
  * nothing and a stray header is only weight on the hottest path in the system.
  */
-function securityHeaders(scriptSrc: string extraCsp: string[] = []): Record<string, string> {
+function securityHeaders(scriptSrc: string, extraCsp: string[] = []): Record<string, string> {
+
   return {
     'content-security-policy': [
       "default-src 'self'",
@@ -192,8 +193,8 @@ function securityHeaders(scriptSrc: string extraCsp: string[] = []): Record<stri
       "object-src 'none'",
       "base-uri 'none'",
       "form-action 'self'",
-      "frame-ancestors 'none'",
-     ...extraCsp,].join('; '),
+      "frame-ancestors 'none'",extraCsp,
+    ].join('; '),
     'x-frame-options': 'DENY',
     'x-content-type-options': 'nosniff',
     // The console keeps the site, date range and active filters in the URL, and
@@ -206,13 +207,15 @@ function securityHeaders(scriptSrc: string extraCsp: string[] = []): Record<stri
   };
 }
 
-function loginHeaders(env: Env): Record<string, string> {
-  return captchaEnabled(env) ? LOGIN_HEADERS_CAPTCHA : PAGE_HEADERS;
-}
-
 /** Sign-in and setup run no script at all, so none needs to be allowed. */
 const PAGE_HEADERS = securityHeaders("'none'");
 
+/**
+ * The sign-in page when PrivCaptcha is enabled. The widget is an iframe served
+ * from privcaptcha.com, and the parent page calls /api/v1/challenge and
+ * /api/v1/solve over fetch — so script, frame, connect and img all need the
+ * origin allowlisted. Everything else stays locked to 'self'.
+ */
 const LOGIN_HEADERS_CAPTCHA = securityHeaders("'self' https://privcaptcha.com", [
   "frame-src https://privcaptcha.com",
   "connect-src 'self' https://privcaptcha.com",
@@ -223,6 +226,7 @@ const LOGIN_HEADERS_CAPTCHA = securityHeaders("'self' https://privcaptcha.com", 
 function loginHeaders(env: Env): Record<string, string> {
   return captchaEnabled(env) ? LOGIN_HEADERS_CAPTCHA : PAGE_HEADERS;
 }
+
 
 app.use('*', async (c, next) => {
   await ensureSchema(c.env.DB);
@@ -298,11 +302,7 @@ app.post('/setup', async (c) => {
 
 app.get('/login', async (c) => {
   if (!(await setupComplete(c.env))) return c.redirect('/setup', 302);
-  return c.html(
-    loginPage(undefined, captchaEnabled(c.env) ? c.env.PRIVCAPTCHA_SITEKEY : undefined),
-    200,
-    loginHeaders(c.env),
-  );
+  return c.html(loginPage(), 200, PAGE_HEADERS);
 });
 
 app.post('/login', async (c) => {
@@ -311,32 +311,17 @@ app.post('/login', async (c) => {
   const form = await c.req.parseBody();
   const email = normalizeEmail(String(form.email ?? ''));
   const password = String(form.password ?? '');
-  const headers = loginHeaders(c.env);
-  const sitekey = captchaEnabled(c.env) ? c.env.PRIVCAPTCHA_SITEKEY : undefined;
-
-  // Redeem the captcha token BEFORE touching the password path. Fail closed:
-  // a missing/unverifiable token is rejected with the same generic message so
-  // nothing here reveals which accounts exist.
-  if (captchaEnabled(c.env)) {
-    const token = String(form['privcaptcha-response'] ?? '');
-    const clientIp = c.req.header('cf-connecting-ip') ?? c.req.header('x-forwarded-for');
-    const result = await verifyPrivCaptcha(c.env.PRIVCAPTCHA_SECRET, token, clientIp);
-    if (!result.success) {
-      return c.html(loginPage('Human verification failed. Please try again.', sitekey), 401, headers);
-    }
-  }
 
   const user = await getUserByEmail(c.env.DB, email);
   // One message for both failure modes — this must not reveal which accounts exist.
   const ok = user !== null && (await verifyPassword(user, password, iterationsFor(c.env)));
   if (!user || !ok) {
-    return c.html(loginPage('Incorrect email or password.', sitekey), 401, headers);
+    return c.html(loginPage('Incorrect email or password.'), 401, PAGE_HEADERS);
   }
 
   setCookie(c, SESSION_COOKIE, await startSession(c.env, user), sessionCookieOptions(isSecure(c.req.url)));
   return c.redirect('/', 302);
 });
-
 
 app.post('/logout', (c) => {
   deleteCookie(c, SESSION_COOKIE, { path: '/' });
