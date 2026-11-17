@@ -193,12 +193,7 @@ function securityHeaders(scriptSrc: string extraCsp: string[] = []): Record<stri
       "base-uri 'none'",
       "form-action 'self'",
       "frame-ancestors 'none'",
-    ]
-    const LOGIN_HEADERS_CAPTCHA = securityHeaders("'self' https://privcaptcha.com", [
-  "frame-src https://privcaptcha.com",
-  "connect-src 'self' https://privcaptcha.com",
-  "img-src 'self' https://privcaptcha.com data:",
-]);.join('; '),
+     ...extraCsp,].join('; '),
     'x-frame-options': 'DENY',
     'x-content-type-options': 'nosniff',
     // The console keeps the site, date range and active filters in the URL, and
@@ -217,6 +212,17 @@ function loginHeaders(env: Env): Record<string, string> {
 
 /** Sign-in and setup run no script at all, so none needs to be allowed. */
 const PAGE_HEADERS = securityHeaders("'none'");
+
+const LOGIN_HEADERS_CAPTCHA = securityHeaders("'self' https://privcaptcha.com", [
+  "frame-src https://privcaptcha.com",
+  "connect-src 'self' https://privcaptcha.com",
+  "img-src 'self' https://privcaptcha.com data:",
+]);
+
+/** Pick the right headers for /login based on whether the captcha is configured. */
+function loginHeaders(env: Env): Record<string, string> {
+  return captchaEnabled(env) ? LOGIN_HEADERS_CAPTCHA : PAGE_HEADERS;
+}
 
 app.use('*', async (c, next) => {
   await ensureSchema(c.env.DB);
