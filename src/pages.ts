@@ -143,7 +143,7 @@ const FACTS = `<div class="facts">
     <div><span style="font-family:var(--sans);color:var(--body)">Runtime</span><span>Cloudflare Worker</span></div>
     <div><span style="font-family:var(--sans);color:var(--body)">Database</span><span>D1</span></div>
     <div><span style="font-family:var(--sans);color:var(--body)">Cookies set</span><span>0</span></div>
-    <div><span style="font-family:var(--sans);color:var(--body)">Third parties</span><span>privcaptcha</span></div>
+    <div><span style="font-family:var(--sans);color:var(--body)">Third parties</span><span>PrivCaptcha</span></div>
   </div>`;
 
 export function setupPage(error?: string): string {
@@ -151,7 +151,7 @@ export function setupPage(error?: string): string {
     'Set up Edgemetry',
     pitch(
       'Your numbers, on your own Cloudflare account.',
-      'No cookies, no fingerprints, no third party. Visitors are counted with a hash that is thrown ' +
+      'No cookies, no fingerprints, one third party. Visitors are counted with a hash that is thrown ' +
         'away every night, so there is nothing to sell and nothing to leak.',
       FACTS,
       'Nothing has been stored yet — this form creates the first account.',
@@ -190,7 +190,7 @@ export function loginPage(error?: string, captchaSitekey?: string): string {
     'Sign in',
     pitch(
       'Your numbers, on your own Cloudflare account.',
-      'No cookies, no fingerprints, no third party. Visitors are counted with a hash that is thrown ' +
+      'No cookies, no fingerprints, one third party. Visitors are counted with a hash that is thrown ' +
         'away every night, so there is nothing to sell and nothing to leak.',
       FACTS,
       'Not your instance? <a href="https://github.com/hayaran/Edgemetry">Deploy your own in one click →</a>',
