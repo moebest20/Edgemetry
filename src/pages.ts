@@ -178,7 +178,14 @@ export function setupPage(error?: string): string {
   );
 }
 
-export function loginPage(error?: string): string {
+function captchaWidget(sitekey?: string): string {
+  if (!sitekey) return '';
+  return `
+     <script src="https://privcaptcha.com/1/api.js" async defer></script>
+     <div class="privcaptcha" data-sitekey="${escapeHtml(sitekey)}"></div>`;
+}
+
+export function loginPage(error?: string, captchaSitekey?: string): string {
   return layout(
     'Sign in',
     pitch(
@@ -200,6 +207,7 @@ export function loginPage(error?: string): string {
          <input id="password" name="password" type="password" autocomplete="current-password" required>
          <span class="hint">Forgotten it? Reset it with <span style="font-family:var(--mono)">wrangler d1 execute</span>,
            or ask another owner.</span></label>
+            ${captchaWidget(captchaSitekey)}   
        <button type="submit">Sign in</button>
      </form>`,
   );
