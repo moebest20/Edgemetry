@@ -310,20 +310,20 @@ app.get('/login', async (c) => {
 
 app.post('/login', async (c) => {
   if (!(await setupComplete(c.env))) return c.redirect('/setup', 302);
-    if (captchaEnabled(c.env)) {
+  const form = await c.req.parseBody();
+  const email = normalizeEmail(String(form.email ?? ''));
+  const password = String(form.password ?? '');
+  const user = await getUserByEmail(c.env.DB, email);
+  // One message for both failure modes — this must not reveal which accounts exist.
+  const ok = user !== null && (await verifyPassword(user, password, iterationsFor(c.env)));
+  if (captchaEnabled(c.env)) {
     const token = String(form['privcaptcha-response'] ?? '');
     const clientIp = c.req.header('cf-connecting-ip') ?? c.req.header('x-forwarded-for');
     const result = await verifyPrivCaptcha(c.env.PRIVCAPTCHA_SECRET, token, clientIp);
     if (!result.success) {
       return c.html(loginPage('Human verification failed. Please try again.', sitekey), 401, headers);
-
-  const form = await c.req.parseBody();
-  const email = normalizeEmail(String(form.email ?? ''));
-  const password = String(form.password ?? '');
-
-  const user = await getUserByEmail(c.env.DB, email);
-  // One message for both failure modes — this must not reveal which accounts exist.
-  const ok = user !== null && (await verifyPassword(user, password, iterationsFor(c.env)));
+    }
+  }
   if (!user || !ok) {
     return c.html(loginPage('Incorrect email or password.'), 401, PAGE_HEADERS);
   }
