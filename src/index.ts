@@ -302,20 +302,25 @@ app.post('/setup', async (c) => {
 
 app.get('/login', async (c) => {
   if (!(await setupComplete(c.env))) return c.redirect('/setup', 302);
-   return c.html(
+  return c.html(
     loginPage(undefined, captchaEnabled(c.env) ? c.env.PRIVCAPTCHA_SITEKEY : undefined),
-    200, loginHeaders(c.env),
+    200,
+    loginHeaders(c.env),
   );
 });
 
 app.post('/login', async (c) => {
   if (!(await setupComplete(c.env))) return c.redirect('/setup', 302);
+
   const form = await c.req.parseBody();
   const email = normalizeEmail(String(form.email ?? ''));
   const password = String(form.password ?? '');
-  const user = await getUserByEmail(c.env.DB, email);
-  // One message for both failure modes — this must not reveal which accounts exist.
-  const ok = user !== null && (await verifyPassword(user, password, iterationsFor(c.env)));
+  const headers = loginHeaders(c.env);
+  const sitekey = captchaEnabled(c.env) ? c.env.PRIVCAPTCHA_SITEKEY : undefined;
+
+  // Redeem the captcha token BEFORE touching the password path. Fail closed:
+  // a missing/unverifiable token is rejected with the same generic message so
+  // nothing here reveals which accounts exist.
   if (captchaEnabled(c.env)) {
     const token = String(form['privcaptcha-response'] ?? '');
     const clientIp = c.req.header('cf-connecting-ip') ?? c.req.header('x-forwarded-for');
@@ -324,13 +329,18 @@ app.post('/login', async (c) => {
       return c.html(loginPage('Human verification failed. Please try again.', sitekey), 401, headers);
     }
   }
+
+  const user = await getUserByEmail(c.env.DB, email);
+  // One message for both failure modes — this must not reveal which accounts exist.
+  const ok = user !== null && (await verifyPassword(user, password, iterationsFor(c.env)));
   if (!user || !ok) {
-    return c.html(loginPage('Incorrect email or password.'), 401, PAGE_HEADERS);
+    return c.html(loginPage('Incorrect email or password.', sitekey), 401, headers);
   }
 
   setCookie(c, SESSION_COOKIE, await startSession(c.env, user), sessionCookieOptions(isSecure(c.req.url)));
   return c.redirect('/', 302);
 });
+
 
 app.post('/logout', (c) => {
   deleteCookie(c, SESSION_COOKIE, { path: '/' });
