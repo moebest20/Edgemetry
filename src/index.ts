@@ -1,5 +1,6 @@
 import { type Context, Hono } from 'hono';
 import { deleteCookie, getCookie, setCookie } from 'hono/cookie';
+import { captchaEnabled, verifyPrivCaptcha } from './privcaptcha';
 
 import {
   SESSION_COOKIE,
@@ -177,7 +178,7 @@ function parseSiteIds(value: unknown): number[] {
  * from other people's sites, where a content policy for this origin means
  * nothing and a stray header is only weight on the hottest path in the system.
  */
-function securityHeaders(scriptSrc: string): Record<string, string> {
+function securityHeaders(scriptSrc: string  extraCsp: string[] = []): Record<string, string> {
   return {
     'content-security-policy': [
       "default-src 'self'",
@@ -193,6 +194,16 @@ function securityHeaders(scriptSrc: string): Record<string, string> {
       "form-action 'self'",
       "frame-ancestors 'none'",
     ].join('; '),
+    const LOGIN_HEADERS_CAPTCHA = securityHeaders("'self' https://privcaptcha.com", [
+  "frame-src https://privcaptcha.com",
+  "connect-src 'self' https://privcaptcha.com",
+  "img-src 'self' https://privcaptcha.com data:",
+]);
+
+  function loginHeaders(env: Env): Record<string, string> {
+  return captchaEnabled(env) ? LOGIN_HEADERS_CAPTCHA : PAGE_HEADERS;
+}
+  
     'x-frame-options': 'DENY',
     'x-content-type-options': 'nosniff',
     // The console keeps the site, date range and active filters in the URL, and
@@ -282,7 +293,10 @@ app.post('/setup', async (c) => {
 
 app.get('/login', async (c) => {
   if (!(await setupComplete(c.env))) return c.redirect('/setup', 302);
-  return c.html(loginPage(), 200, PAGE_HEADERS);
+  return c.html(
+    loginPage(undefined, captchaEnabled(c.env) ? c.env.PRIVCAPTCHA_SITEKEY : undefined),
+    200, loginHeaders(c.env),
+  );
 });
 
 app.post('/login', async (c) => {
@@ -301,6 +315,13 @@ app.post('/login', async (c) => {
 
   setCookie(c, SESSION_COOKIE, await startSession(c.env, user), sessionCookieOptions(isSecure(c.req.url)));
   return c.redirect('/', 302);
+
+   if (captchaEnabled(c.env)) {
+    const token = String(form['privcaptcha-response'] ?? '');
+    const clientIp = c.req.header('cf-connecting-ip') ?? c.req.header('x-forwarded-for');
+    const result = await verifyPrivCaptcha(c.env.PRIVCAPTCHA_SECRET, token, clientIp);
+    if (!result.success) {
+      return c.html(loginPage('Human verification failed. Please try again.', sitekey), 401, headers);
 });
 
 app.post('/logout', (c) => {
