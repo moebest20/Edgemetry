@@ -4,7 +4,6 @@
   "main": "src/index.ts",
   "compatibility_date": "2026-07-28",
   "compatibility_flags": ["nodejs_compat"],
-  "PRIVCAPTCHA_SITEKEY": "pk_01a1e75f22bd7c10813b2da3540cd48d",  
 
   // Observability is on so `wrangler tail` and the dashboard's Logs view work
   // out of the box. Drop head_sampling_rate if your traffic grows a lot.
@@ -67,7 +66,8 @@
     // Set to "off" to never make it — updates then become something you go
     // looking for. See the update workflow under .github/workflows.
     "UPDATE_CHECK": "on",
-    "TRUSTED_PROXY_CIDRS": "43.240.12.0/24,45.125.15.0/24,45.125.35.0/24,103.231.15.0/24,38.60.162.0/24,38.62.163.0/24,130.94.15.0/24,123.254.106.0/24,123.254.105.0/24" 
+    "TRUSTED_PROXY_CIDRS": "43.240.12.0/24,45.125.15.0/24,45.125.35.0/24,103.231.15.0/24,38.60.162.0/24,38.62.163.0/24,130.94.15.0/24,123.254.106.0/24,123.254.105.0/24"
+    "PRIVCAPTCHA_SITEKEY": "pk_01a1e75f22bd7c10813b2da3540cd48d",  
   },
 
   "rules": [
