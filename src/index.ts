@@ -302,11 +302,20 @@ app.post('/setup', async (c) => {
 
 app.get('/login', async (c) => {
   if (!(await setupComplete(c.env))) return c.redirect('/setup', 302);
-  return c.html(loginPage(), 200, PAGE_HEADERS);
+   return c.html(
+    loginPage(undefined, captchaEnabled(c.env) ? c.env.PRIVCAPTCHA_SITEKEY : undefined),
+    200, loginHeaders(c.env),
+  );
 });
 
 app.post('/login', async (c) => {
   if (!(await setupComplete(c.env))) return c.redirect('/setup', 302);
+    if (captchaEnabled(c.env)) {
+    const token = String(form['privcaptcha-response'] ?? '');
+    const clientIp = c.req.header('cf-connecting-ip') ?? c.req.header('x-forwarded-for');
+    const result = await verifyPrivCaptcha(c.env.PRIVCAPTCHA_SECRET, token, clientIp);
+    if (!result.success) {
+      return c.html(loginPage('Human verification failed. Please try again.', sitekey), 401, headers);
 
   const form = await c.req.parseBody();
   const email = normalizeEmail(String(form.email ?? ''));
