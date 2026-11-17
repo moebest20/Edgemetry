@@ -310,13 +310,6 @@ app.post('/login', async (c) => {
   // One message for both failure modes — this must not reveal which accounts exist.
   const ok = user !== null && (await verifyPassword(user, password, iterationsFor(c.env)));
 
-   if (captchaEnabled(c.env)) {
-    const token = String(form['privcaptcha-response'] ?? '');
-    const clientIp = c.req.header('cf-connecting-ip') ?? c.req.header('x-forwarded-for');
-    const result = await verifyPrivCaptcha(c.env.PRIVCAPTCHA_SECRET, token, clientIp);
-    if (!result.success) {
-      return c.html(loginPage('Human verification failed. Please try again.', sitekey), 401, headers);
-});
      
   if (!user || !ok) {
     return c.html(loginPage('Incorrect email or password.'), 401, PAGE_HEADERS);
@@ -324,8 +317,6 @@ app.post('/login', async (c) => {
 
   setCookie(c, SESSION_COOKIE, await startSession(c.env, user), sessionCookieOptions(isSecure(c.req.url)));
   return c.redirect('/', 302);
-
-}
 
 app.post('/logout', (c) => {
   deleteCookie(c, SESSION_COOKIE, { path: '/' });
