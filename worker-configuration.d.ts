@@ -9,7 +9,8 @@ interface __BaseEnv_Env {
 	UPDATE_CHECK: "on";
 	TRUSTED_PROXY_CIDRS?: string;
 	GEO_KV?: KVNamespace;
-
+	PRIVCAPTCHA_SITEKEY: string;
+    PRIVCAPTCHA_SECRET: string;
 }
 declare namespace Cloudflare {
 	interface GlobalProps {
